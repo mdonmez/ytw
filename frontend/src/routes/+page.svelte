@@ -15,7 +15,13 @@
   import { toggleMode } from "mode-watcher";
 
   type Status = "idle" | "preparing" | "downloading" | "finished" | "error";
-  type ErrorType = "fetch_failed" | "download_failed" | "user_cancelled" | "user_cancelled_preparing" | "clipboard_denied" | null;
+  type ErrorType =
+    | "fetch_failed"
+    | "download_failed"
+    | "user_cancelled"
+    | "user_cancelled_preparing"
+    | "clipboard_denied"
+    | null;
 
   let url = $state("");
   let type = $state<"video" | "audio">("video");
@@ -30,22 +36,40 @@
     finished: ReturnType<typeof setTimeout> | null;
   }>({ download: null, skeleton: null, finished: null });
 
-  const isValidUrl = $derived(url.trim().length > 0 && (url.includes("youtube.com") || url.includes("youtu.be")));
+  const isValidUrl = $derived(
+    url.trim().length > 0 &&
+      (url.includes("youtube.com") || url.includes("youtu.be"))
+  );
   const isActive = $derived(status === "preparing" || status === "downloading");
   const canInteract = $derived(status === "idle" || status === "error");
-  
-  const buttonLabel = $derived(status === "finished" ? "Finished" : isActive ? "Cancel" : "Download");
-  
-  const showPreview = $derived(
-    status !== "idle" && 
-    !(status === "error" && ["fetch_failed", "user_cancelled_preparing", "clipboard_denied"].includes(errorType!))
+
+  const buttonLabel = $derived(
+    status === "finished" ? "Finished" : isActive ? "Cancel" : "Download"
   );
-  
-  const showProgress = $derived(status !== "idle" && !(status === "error" && errorType === "clipboard_denied"));
-  
+
+  const showPreview = $derived(
+    status !== "idle" &&
+      !(
+        status === "error" &&
+        [
+          "fetch_failed",
+          "user_cancelled_preparing",
+          "clipboard_denied",
+        ].includes(errorType!)
+      )
+  );
+
+  const showProgress = $derived(
+    status !== "idle" &&
+      !(status === "error" && errorType === "clipboard_denied")
+  );
+
   const progressClass = $derived(
-    status === "error" ? "[&>div]:bg-red-600" : 
-    status === "finished" ? "[&>div]:bg-green-600" : ""
+    status === "error"
+      ? "[&>div]:bg-red-600"
+      : status === "finished"
+        ? "[&>div]:bg-green-600"
+        : ""
   );
 
   function clearTimers() {
@@ -91,7 +115,7 @@
 
       timers.download = setInterval(() => {
         progress += Math.random() * 10 + 2;
-        
+
         if (progress >= 100) {
           progress = 100;
           clearInterval(timers.download!);
@@ -110,7 +134,8 @@
   }
 
   function cancel() {
-    const error = status === "preparing" ? "user_cancelled_preparing" : "user_cancelled";
+    const error =
+      status === "preparing" ? "user_cancelled_preparing" : "user_cancelled";
     if (status === "preparing") progress = 100;
     setError(error, "Download cancelled.");
   }
@@ -132,7 +157,9 @@
   }
 </script>
 
-<div class="min-h-screen flex items-center justify-center p-4 pb-32 sm:p-6 lg:p-8">
+<div
+  class="min-h-screen flex items-center justify-center p-4 pb-32 sm:p-6 lg:p-8"
+>
   <div class="w-full max-w-2xl mx-auto space-y-6">
     <div class="text-center">
       <h1 class="text-4xl font-extrabold tracking-tight lg:text-5xl">
@@ -183,7 +210,11 @@
       <div class="flex justify-center">
         <Button
           onclick={isActive ? cancel : startDownload}
-          variant={status === "finished" ? "default" : isActive ? "destructive" : "default"}
+          variant={status === "finished"
+            ? "default"
+            : isActive
+              ? "destructive"
+              : "default"}
           disabled={status === "finished" || (canInteract && !isValidUrl)}
           class="w-full sm:w-auto sm:min-w-[200px]"
         >
@@ -193,7 +224,10 @@
     </div>
 
     {#if showPreview}
-      <div class="rounded-lg border bg-card text-card-foreground p-4" transition:slide>
+      <div
+        class="rounded-lg border bg-card text-card-foreground p-4"
+        transition:slide
+      >
         {#if status === "preparing"}
           <div class="flex gap-4" in:fade>
             <Skeleton class="w-40 h-24 rounded-md shrink-0" />
@@ -232,12 +266,20 @@
 
     {#if status === "error"}
       <div transition:slide>
-        <Alert.Root variant="destructive" class="flex items-center justify-between gap-4">
+        <Alert.Root
+          variant="destructive"
+          class="flex items-center justify-between gap-4"
+        >
           <div class="flex-1">
             <Alert.Title>Error</Alert.Title>
             <Alert.Description>{errorMessage}</Alert.Description>
           </div>
-          <Button variant="secondary" size="sm" class="text-foreground" onclick={() => reset()}>
+          <Button
+            variant="secondary"
+            size="sm"
+            class="text-foreground"
+            onclick={() => reset()}
+          >
             OK
           </Button>
         </Alert.Root>
@@ -248,11 +290,11 @@
 
 <div class="fixed bottom-3 right-3 flex gap-2">
   <Popover.Root>
-    <Popover.Trigger>
-      <Button variant="secondary" size="icon">
-        <Info class="h-4 w-4" />
-        <span class="sr-only">Information</span>
-      </Button>
+    <Popover.Trigger
+      class="inline-flex size-9 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80"
+    >
+      <Info class="h-4 w-4" />
+      <span class="sr-only">Information</span>
     </Popover.Trigger>
     <Popover.Content class="text-sm" side="top" align="end">
       <p class="text-muted-foreground">
