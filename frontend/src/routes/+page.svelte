@@ -244,9 +244,9 @@
       <div class="rounded-lg border bg-card text-card-foreground p-4">
         {#if status === "preparing"}
           <div class="flex gap-4">
-            <Skeleton class="w-40 h-24 rounded-md shrink-0" />
+            <Skeleton class="w-24 h-16 sm:w-40 sm:h-24 rounded-md shrink-0" />
             <div class="flex flex-col justify-between flex-1 min-w-0">
-              <Skeleton class="h-6 w-3/4 mb-2" />
+              <Skeleton class="h-5 sm:h-6 w-3/4 mb-2" />
               <div class="flex gap-2 flex-wrap">
                 <Skeleton class="h-6 w-20" />
                 <Skeleton class="h-6 w-20" />
@@ -258,10 +258,10 @@
             <img
               src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b6/Image_created_with_a_mobile_phone.png/1280px-Image_created_with_a_mobile_phone.png"
               alt="Preview thumbnail"
-              class="w-40 h-24 object-cover rounded-md shrink-0"
+              class="w-24 h-16 sm:w-40 sm:h-24 object-cover rounded-md shrink-0"
             />
             <div class="flex flex-col justify-between flex-1 min-w-0">
-              <h3 class="text-2xl font-semibold truncate">Title</h3>
+              <h3 class="text-lg sm:text-2xl font-semibold truncate">Title</h3>
               <div class="flex gap-2 flex-wrap">
                 <Badge variant="secondary">Uploader</Badge>
                 <Badge variant="secondary">Duration</Badge>
