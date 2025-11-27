@@ -11,7 +11,7 @@
   import SunIcon from "@lucide/svelte/icons/sun";
   import MoonIcon from "@lucide/svelte/icons/moon";
   import Info from "@lucide/svelte/icons/info";
-  import { slide, fade } from "svelte/transition";
+  import autoAnimate from "@formkit/auto-animate";
   import { toggleMode } from "mode-watcher";
 
   type Status = "idle" | "preparing" | "downloading" | "finished" | "error";
@@ -172,7 +172,12 @@
 <div
   class="min-h-screen flex items-center justify-center p-4 pb-32 sm:p-6 lg:p-8"
 >
-  <div class="w-full max-w-2xl mx-auto space-y-6">
+  <div
+    class="w-full max-w-2xl mx-auto space-y-6"
+    use:autoAnimate={{
+      easing: "ease-out",
+    }}
+  >
     <div class="text-center">
       <h1 class="text-4xl font-extrabold tracking-tight lg:text-5xl">
         YouTube Downloader
@@ -236,12 +241,9 @@
     </div>
 
     {#if showPreview}
-      <div
-        class="rounded-lg border bg-card text-card-foreground p-4"
-        transition:slide
-      >
+      <div class="rounded-lg border bg-card text-card-foreground p-4">
         {#if status === "preparing"}
-          <div class="flex gap-4" in:fade>
+          <div class="flex gap-4">
             <Skeleton class="w-40 h-24 rounded-md shrink-0" />
             <div class="flex flex-col justify-between flex-1 min-w-0">
               <Skeleton class="h-6 w-3/4 mb-2" />
@@ -252,7 +254,7 @@
             </div>
           </div>
         {:else}
-          <div class="flex gap-4" in:fade>
+          <div class="flex gap-4">
             <img
               src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b6/Image_created_with_a_mobile_phone.png/1280px-Image_created_with_a_mobile_phone.png"
               alt="Preview thumbnail"
@@ -271,13 +273,13 @@
     {/if}
 
     {#if showProgress}
-      <div transition:fade>
+      <div>
         <Progress value={progress} class={progressClass} />
       </div>
     {/if}
 
     {#if status === "error"}
-      <div transition:slide>
+      <div>
         <Alert.Root
           variant="destructive"
           class="flex items-center justify-between gap-4"
