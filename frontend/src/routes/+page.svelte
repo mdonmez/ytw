@@ -30,12 +30,6 @@
   let errorType = $state<ErrorType>(null);
   let errorMessage = $state("");
 
-  let timers = $state<{
-    download: ReturnType<typeof setInterval> | null;
-    skeleton: ReturnType<typeof setTimeout> | null;
-    finished: ReturnType<typeof setTimeout> | null;
-  }>({ download: null, skeleton: null, finished: null });
-
   const isValidUrl = $derived(
     url.trim().length > 0 &&
       (url.includes("youtube.com") || url.includes("youtu.be"))
@@ -72,15 +66,63 @@
         : ""
   );
 
-  function clearTimers() {
-    if (timers.download) clearInterval(timers.download);
-    if (timers.skeleton) clearTimeout(timers.skeleton);
-    if (timers.finished) clearTimeout(timers.finished);
-    timers = { download: null, skeleton: null, finished: null };
-  }
+  // Effect: Handle "preparing" status
+  $effect(() => {
+    if (status !== "preparing") return;
+
+    const timeoutId = setTimeout(() => {
+      if (Math.random() < 0.1) {
+        progress = 100;
+        status = "error";
+        errorType = "fetch_failed";
+        errorMessage = "Error occured while fetching content.";
+        return;
+      }
+
+      status = "downloading";
+    }, 1500);
+
+    return () => clearTimeout(timeoutId);
+  });
+
+  // Effect: Handle "downloading" status
+  $effect(() => {
+    if (status !== "downloading") return;
+
+    const intervalId = setInterval(() => {
+      progress += Math.random() * 10 + 2;
+
+      if (progress >= 100) {
+        progress = 100;
+        clearInterval(intervalId);
+
+        setTimeout(() => {
+          if (Math.random() > 0.2) {
+            status = "finished";
+          } else {
+            status = "error";
+            errorType = "download_failed";
+            errorMessage = "Error while downloading content.";
+          }
+        }, 500);
+      }
+    }, 200);
+
+    return () => clearInterval(intervalId);
+  });
+
+  // Effect: Handle "finished" status
+  $effect(() => {
+    if (status !== "finished") return;
+
+    const timeoutId = setTimeout(() => {
+      reset(true);
+    }, 3000);
+
+    return () => clearTimeout(timeoutId);
+  });
 
   function reset(clearInput = false) {
-    clearTimers();
     status = "idle";
     progress = 0;
     errorType = null;
@@ -89,7 +131,6 @@
   }
 
   function setError(type: ErrorType, message: string) {
-    clearTimers();
     status = "error";
     errorType = type;
     errorMessage = message;
@@ -98,39 +139,10 @@
   function startDownload() {
     if (!isValidUrl) return;
 
-    clearTimers();
     status = "preparing";
     progress = 0;
     errorType = null;
     errorMessage = "";
-
-    timers.skeleton = setTimeout(() => {
-      if (Math.random() < 0.1) {
-        progress = 100;
-        setError("fetch_failed", "Error occured while fetching content.");
-        return;
-      }
-
-      status = "downloading";
-
-      timers.download = setInterval(() => {
-        progress += Math.random() * 10 + 2;
-
-        if (progress >= 100) {
-          progress = 100;
-          clearInterval(timers.download!);
-
-          setTimeout(() => {
-            if (Math.random() > 0.2) {
-              status = "finished";
-              timers.finished = setTimeout(() => reset(true), 3000);
-            } else {
-              setError("download_failed", "Error while downloading content.");
-            }
-          }, 500);
-        }
-      }, 200);
-    }, 1500);
   }
 
   function cancel() {
