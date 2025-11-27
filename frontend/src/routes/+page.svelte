@@ -6,118 +6,113 @@
   import * as Alert from "$lib/components/ui/alert/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import * as ButtonGroup from "$lib/components/ui/button-group/index.js";
-  import Clipboard from "@lucide/svelte/icons/clipboard";
+  import * as Popover from "$lib/components/ui/popover/index.js";
+  import Clipboard from "@lucide/svelte/icons/clipboard-paste";
   import SunIcon from "@lucide/svelte/icons/sun";
   import MoonIcon from "@lucide/svelte/icons/moon";
+  import Info from "@lucide/svelte/icons/info";
   import { slide, fade } from "svelte/transition";
   import { toggleMode } from "mode-watcher";
+
+  type Status = "idle" | "preparing" | "downloading" | "finished" | "error";
+  type ErrorType = "fetch_failed" | "download_failed" | "user_cancelled" | "user_cancelled_preparing" | "clipboard_denied" | null;
 
   let url = $state("");
   let type = $state<"video" | "audio">("video");
   let progress = $state(0);
-  let downloading = $state(false);
-  let finished = $state(false);
-  let failed = $state(false);
-  let error = $state("");
+  let status = $state<Status>("idle");
+  let errorType = $state<ErrorType>(null);
+  let errorMessage = $state("");
 
-  let interval: ReturnType<typeof setInterval> | null = null;
-  let skeletonTimeout: ReturnType<typeof setTimeout> | null = null;
-  let showSkeleton = $state(false);
-  let hasPreview = $state(false);
-  let hasProgress = $state(false);
+  let timers = $state<{
+    download: ReturnType<typeof setInterval> | null;
+    skeleton: ReturnType<typeof setTimeout> | null;
+    finished: ReturnType<typeof setTimeout> | null;
+  }>({ download: null, skeleton: null, finished: null });
 
-  const valid = $derived(
-    url.trim().length > 0 &&
-      (url.includes("youtube.com") || url.includes("youtu.be"))
-  );
-
+  const isValidUrl = $derived(url.trim().length > 0 && (url.includes("youtube.com") || url.includes("youtu.be")));
+  const isActive = $derived(status === "preparing" || status === "downloading");
+  const canInteract = $derived(status === "idle" || status === "error");
+  
+  const buttonLabel = $derived(status === "finished" ? "Finished" : isActive ? "Cancel" : "Download");
+  
   const showPreview = $derived(
-    progress > 0 || !!error || showSkeleton || hasPreview
+    status !== "idle" && 
+    !(status === "error" && ["fetch_failed", "user_cancelled_preparing", "clipboard_denied"].includes(errorType!))
   );
-  const showProgress = $derived(progress > 0 || showSkeleton || hasProgress);
-  const showError = $derived(!!error);
+  
+  const showProgress = $derived(status !== "idle" && !(status === "error" && errorType === "clipboard_denied"));
+  
+  const progressClass = $derived(
+    status === "error" ? "[&>div]:bg-red-600" : 
+    status === "finished" ? "[&>div]:bg-green-600" : ""
+  );
 
-  function download() {
-    failed = false;
-    error = "";
+  function clearTimers() {
+    if (timers.download) clearInterval(timers.download);
+    if (timers.skeleton) clearTimeout(timers.skeleton);
+    if (timers.finished) clearTimeout(timers.finished);
+    timers = { download: null, skeleton: null, finished: null };
+  }
+
+  function reset(clearInput = false) {
+    clearTimers();
+    status = "idle";
     progress = 0;
+    errorType = null;
+    errorMessage = "";
+    if (clearInput) url = "";
+  }
 
-    if (!valid) return;
+  function setError(type: ErrorType, message: string) {
+    clearTimers();
+    status = "error";
+    errorType = type;
+    errorMessage = message;
+  }
 
-    downloading = true;
-    // Show skeleton immediately for 1s and freeze progress at 0%
-    showSkeleton = true;
-    hasProgress = true;
-    hasPreview = true;
-    if (skeletonTimeout) {
-      clearTimeout(skeletonTimeout);
-      skeletonTimeout = null;
-    }
-    skeletonTimeout = setTimeout(() => {
-      // hide skeleton and show real preview (keep container visible via hasPreview)
-      showSkeleton = false;
-      skeletonTimeout = null;
+  function startDownload() {
+    if (!isValidUrl) return;
 
-      interval = setInterval(() => {
-        progress += Math.random() * 15 + 5;
+    clearTimers();
+    status = "preparing";
+    progress = 0;
+    errorType = null;
+    errorMessage = "";
 
+    timers.skeleton = setTimeout(() => {
+      if (Math.random() < 0.1) {
+        progress = 100;
+        setError("fetch_failed", "Error occured while fetching content.");
+        return;
+      }
+
+      status = "downloading";
+
+      timers.download = setInterval(() => {
+        progress += Math.random() * 10 + 2;
+        
         if (progress >= 100) {
           progress = 100;
-          showSkeleton = false;
-          clearInterval(interval!);
-          interval = null;
+          clearInterval(timers.download!);
 
           setTimeout(() => {
-            downloading = false;
-            const success = Math.random() > 1;
-
-            if (!success) {
-              failed = true;
-              error = "Error downloading content.";
-              showSkeleton = false;
-              hasProgress = false;
+            if (Math.random() > 0.2) {
+              status = "finished";
+              timers.finished = setTimeout(() => reset(true), 3000);
             } else {
-              finished = true;
-              showSkeleton = false;
-              setTimeout(() => {
-                progress = 0;
-                url = "";
-                finished = false;
-                // hide preview when reset finishes
-                hasPreview = false;
-                hasProgress = false;
-              }, 2000);
+              setError("download_failed", "Error while downloading content.");
             }
           }, 500);
         }
-      }, 300);
-    }, 1000);
+      }, 200);
+    }, 1500);
   }
 
   function cancel() {
-    if (interval) {
-      clearInterval(interval);
-      interval = null;
-    }
-    if (skeletonTimeout) {
-      clearTimeout(skeletonTimeout);
-      skeletonTimeout = null;
-    }
-    downloading = false;
-    showSkeleton = false;
-    hasPreview = false;
-    hasProgress = false;
-    failed = true;
-    error = "Download cancelled by user";
-  }
-
-  function dismiss() {
-    error = "";
-    progress = 0;
-    failed = false;
-    showSkeleton = false;
-    hasPreview = false;
-    hasProgress = false;
+    const error = status === "preparing" ? "user_cancelled_preparing" : "user_cancelled";
+    if (status === "preparing") progress = 100;
+    setError(error, "Download cancelled.");
   }
 
   async function paste() {
@@ -125,18 +120,19 @@
       const text = await navigator.clipboard.readText();
       if (text) url = text;
     } catch {
-      error = "Failed to read clipboard";
+      setError("clipboard_denied", "Clipboard access denied.");
     }
   }
 
-  function handleKeyPress(event: KeyboardEvent) {
-    if (event.key !== "Enter") return;
-    if (downloading) return cancel();
-    if (valid) download();
+  function handleKeydown(event: KeyboardEvent) {
+    if (event.key === "Enter") {
+      if (isActive) cancel();
+      else if (canInteract && isValidUrl) startDownload();
+    }
   }
 </script>
 
-<div class="min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-8">
+<div class="min-h-screen flex items-center justify-center p-4 pb-32 sm:p-6 lg:p-8">
   <div class="w-full max-w-2xl mx-auto space-y-6">
     <div class="text-center">
       <h1 class="text-4xl font-extrabold tracking-tight lg:text-5xl">
@@ -148,19 +144,19 @@
       <div class="flex gap-2">
         <Button
           variant="outline"
+          size="icon"
           onclick={paste}
           aria-label="Paste from clipboard"
-          disabled={downloading}
-          class="px-3"
+          disabled={!canInteract}
         >
           <Clipboard class="h-4 w-4" />
         </Button>
 
         <Input
           bind:value={url}
-          onkeypress={handleKeyPress}
+          onkeydown={handleKeydown}
           placeholder="Paste YouTube link here..."
-          disabled={downloading}
+          disabled={!canInteract}
         />
       </div>
 
@@ -169,7 +165,7 @@
           <Button
             variant={type === "video" ? "default" : "secondary"}
             onclick={() => (type = "video")}
-            disabled={downloading}
+            disabled={!canInteract}
           >
             Video
           </Button>
@@ -177,7 +173,7 @@
           <Button
             variant={type === "audio" ? "default" : "secondary"}
             onclick={() => (type = "audio")}
-            disabled={downloading}
+            disabled={!canInteract}
           >
             Audio
           </Button>
@@ -186,92 +182,62 @@
 
       <div class="flex justify-center">
         <Button
-          onclick={downloading ? cancel : download}
-          variant={finished
-            ? "default"
-            : downloading
-              ? "destructive"
-              : "default"}
-          disabled={(!valid && !downloading) || finished}
+          onclick={isActive ? cancel : startDownload}
+          variant={status === "finished" ? "default" : isActive ? "destructive" : "default"}
+          disabled={status === "finished" || (canInteract && !isValidUrl)}
           class="w-full sm:w-auto sm:min-w-[200px]"
         >
-          {finished ? "Finished" : downloading ? "Cancel" : "Download"}
+          {buttonLabel}
         </Button>
       </div>
     </div>
 
     {#if showPreview}
-      <div
-        class="rounded-lg border bg-card text-card-foreground p-4"
-        transition:slide={{ duration: 300 }}
-      >
-        {#key showSkeleton}
-          {#if showSkeleton}
-            <div class="flex gap-4" in:fade out:fade>
-              <Skeleton class="w-40 h-24 rounded-md shrink-0" />
-
-              <div class="flex flex-col justify-between flex-1 min-w-0">
-                <Skeleton class="h-6 w-3/4 mb-2" />
-
-                <div class="flex gap-2 flex-wrap">
-                  <Skeleton class="h-6 w-20" />
-                  <Skeleton class="h-6 w-20" />
-                </div>
+      <div class="rounded-lg border bg-card text-card-foreground p-4" transition:slide>
+        {#if status === "preparing"}
+          <div class="flex gap-4" in:fade>
+            <Skeleton class="w-40 h-24 rounded-md shrink-0" />
+            <div class="flex flex-col justify-between flex-1 min-w-0">
+              <Skeleton class="h-6 w-3/4 mb-2" />
+              <div class="flex gap-2 flex-wrap">
+                <Skeleton class="h-6 w-20" />
+                <Skeleton class="h-6 w-20" />
               </div>
             </div>
-          {:else}
-            <div class="flex gap-4" in:fade out:fade>
-              <img
-                src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b6/Image_created_with_a_mobile_phone.png/1280px-Image_created_with_a_mobile_phone.png"
-                alt="Preview thumbnail"
-                class="w-40 h-24 object-cover rounded-md shrink-0"
-              />
-
-              <div class="flex flex-col justify-between flex-1 min-w-0">
-                <h3 class="text-2xl font-semibold truncate">Title</h3>
-
-                <div class="flex gap-2 flex-wrap">
-                  <Badge variant="secondary">Uploader</Badge>
-                  <Badge variant="secondary">Duration</Badge>
-                </div>
+          </div>
+        {:else}
+          <div class="flex gap-4" in:fade>
+            <img
+              src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b6/Image_created_with_a_mobile_phone.png/1280px-Image_created_with_a_mobile_phone.png"
+              alt="Preview thumbnail"
+              class="w-40 h-24 object-cover rounded-md shrink-0"
+            />
+            <div class="flex flex-col justify-between flex-1 min-w-0">
+              <h3 class="text-2xl font-semibold truncate">Title</h3>
+              <div class="flex gap-2 flex-wrap">
+                <Badge variant="secondary">Uploader</Badge>
+                <Badge variant="secondary">Duration</Badge>
               </div>
             </div>
-          {/if}
-        {/key}
+          </div>
+        {/if}
       </div>
     {/if}
 
     {#if showProgress}
-      {#key hasProgress}
-        <div in:fade out:fade>
-          <Progress
-            value={progress}
-            class={failed
-              ? "[&>div]:bg-red-600"
-              : finished
-                ? "[&>div]:bg-green-600"
-                : ""}
-          />
-        </div>
-      {/key}
+      <div transition:fade>
+        <Progress value={progress} class={progressClass} />
+      </div>
     {/if}
 
-    {#if showError}
-      <div transition:slide={{ duration: 300 }}>
-        <Alert.Root
-          variant="destructive"
-          class="flex items-center justify-between gap-4"
-        >
+    {#if status === "error"}
+      <div transition:slide>
+        <Alert.Root variant="destructive" class="flex items-center justify-between gap-4">
           <div class="flex-1">
             <Alert.Title>Error</Alert.Title>
-            <Alert.Description>{error}</Alert.Description>
+            <Alert.Description>{errorMessage}</Alert.Description>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            class="text-foreground"
-            onclick={dismiss}
-          >
+          <Button variant="secondary" size="sm" class="text-foreground" onclick={() => reset()}>
             OK
           </Button>
         </Alert.Root>
@@ -280,8 +246,36 @@
   </div>
 </div>
 
-<div class="fixed bottom-3 right-3">
-  <Button onclick={toggleMode} variant="outline" size="icon">
+<div class="fixed bottom-3 right-3 flex gap-2">
+  <Popover.Root>
+    <Popover.Trigger>
+      <Button variant="secondary" size="icon">
+        <Info class="h-4 w-4" />
+        <span class="sr-only">Information</span>
+      </Button>
+    </Popover.Trigger>
+    <Popover.Content class="text-sm" side="top" align="end">
+      <p class="text-muted-foreground">
+        Only download content you have permission to access. This FOSS project
+        is licensed under
+        <a
+          href="https://www.gnu.org/licenses/gpl-3.0.en.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="underline hover:text-foreground">GPLv3</a
+        >
+        and provides no warranty. You can view the source code on
+        <a
+          href="https://github.com/mdonmez/ytw"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="underline hover:text-foreground">GitHub</a
+        >. We do not collect any data.
+      </p>
+    </Popover.Content>
+  </Popover.Root>
+
+  <Button onclick={toggleMode} variant="secondary" size="icon">
     <SunIcon
       class="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all! dark:-rotate-90 dark:scale-0"
     />
