@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     TEMP_DIR: Path = Path(tempfile.gettempdir())
     LOG_LEVEL: str = "INFO"
 
-    MAX_WORKERS: int = 100
+    MAX_WORKERS: int = 50
     PROGRESS_UPDATE_INTERVAL: float = 0.5
     PROCESSING_PROGRESS: float = 99.0
 

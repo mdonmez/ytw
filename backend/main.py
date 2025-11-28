@@ -3,9 +3,9 @@ from fastapi import FastAPI, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 
-from .schemas import DownloadRequest, TaskResponse
-from .downloader import DownloadManager
-from .config import settings
+from src.schemas import DownloadRequest, TaskResponse
+from src.downloader import DownloadManager
+from src.config import settings
 
 logging.basicConfig(
     level=settings.LOG_LEVEL, format="%(asctime)s %(levelname)s: %(message)s"
