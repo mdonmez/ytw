@@ -1,10 +1,7 @@
 <script lang="ts">
   import { Button } from "$lib/components/ui/button/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
-  import { Progress } from "$lib/components/ui/progress/index.js";
-  import { Skeleton } from "$lib/components/ui/skeleton/index.js";
   import * as Alert from "$lib/components/ui/alert/index.js";
-  import { Badge } from "$lib/components/ui/badge/index.js";
   import * as ButtonGroup from "$lib/components/ui/button-group/index.js";
   import * as Popover from "$lib/components/ui/popover/index.js";
   import Clipboard from "@lucide/svelte/icons/clipboard-paste";
@@ -13,162 +10,80 @@
   import Info from "@lucide/svelte/icons/info";
   import autoAnimate from "@formkit/auto-animate";
   import { toggleMode } from "mode-watcher";
+  import { fade } from "svelte/transition";
 
-  type Status = "idle" | "preparing" | "downloading" | "finished" | "error";
-  type ErrorType =
-    | "fetch_failed"
-    | "download_failed"
-    | "user_cancelled"
-    | "user_cancelled_preparing"
-    | "clipboard_denied"
-    | null;
+  type Status = "idle" | "loading" | "started" | "error";
 
+  // State
   let url = $state("");
   let type = $state<"video" | "audio">("video");
-  let progress = $state(0);
   let status = $state<Status>("idle");
-  let errorType = $state<ErrorType>(null);
   let errorMessage = $state("");
   let inputInvalid = $state(false);
 
-  // Computed properties
-  const validUrl = $derived(
-    url.trim().length > 0 &&
-      (url.includes("youtube.com") || url.includes("youtu.be"))
+  // Derived state
+  const isValidUrl = $derived(
+    url.trim() && (url.includes("youtube.com") || url.includes("youtu.be"))
   );
-  const active = $derived(status === "preparing" || status === "downloading");
-  const canInteract = $derived(status === "idle" || status === "error");
-  const empty = $derived(url.trim().length === 0);
-
-  const btnLabel = $derived(
-    status === "finished" ? "Finished" : active ? "Cancel" : "Download"
-  );
-  const progressClass = $derived(
-    status === "error"
-      ? "[&>div]:bg-red-600"
-      : status === "finished"
-        ? "[&>div]:bg-green-600"
-        : ""
+  const isProcessing = $derived(status === "loading" || status === "started");
+  const buttonLabel = $derived(
+    status === "loading"
+      ? "Preparing"
+      : status === "started"
+        ? "Download Started"
+        : "Download"
   );
 
-  const showPreview = $derived(
-    status !== "idle" &&
-      !(
-        status === "error" &&
-        [
-          "fetch_failed",
-          "user_cancelled_preparing",
-          "clipboard_denied",
-        ].includes(errorType!)
-      )
-  );
-  const showProgress = $derived(
-    status !== "idle" &&
-      !(status === "error" && errorType === "clipboard_denied")
-  );
-
-  // Effect: Preparing phase simulation
-  $effect(() => {
-    if (status !== "preparing") return;
-    const timeout = setTimeout(() => {
-      if (Math.random() < 0.1) {
-        setError("fetch_failed", "Error occured while fetching content.");
-        progress = 100;
-      } else {
-        status = "downloading";
-      }
-    }, 1500);
-    return () => clearTimeout(timeout);
-  });
-
-  // Effect: Downloading phase simulation
-  $effect(() => {
-    if (status !== "downloading") return;
-    const interval = setInterval(() => {
-      progress += Math.random() * 10 + 2;
-      if (progress >= 100) {
-        progress = 100;
-        clearInterval(interval);
-        setTimeout(() => {
-          status = Math.random() > 0.2 ? "finished" : "error";
-          if (status === "error")
-            setError("download_failed", "Error while downloading content.");
-        }, 500);
-      }
-    }, 200);
-    return () => clearInterval(interval);
-  });
-
-  // Effect: Auto-reset after finish
-  $effect(() => {
-    if (status !== "finished") return;
-    const timeout = setTimeout(() => reset(true), 3000);
-    return () => clearTimeout(timeout);
-  });
-
-  function reset(clearInput = false) {
+  // Actions
+  const resetState = (clearInput = false) => {
     status = "idle";
-    progress = 0;
-    errorType = null;
     errorMessage = "";
     inputInvalid = false;
     if (clearInput) url = "";
-  }
+  };
 
-  function setError(type: ErrorType, message: string) {
-    status = "error";
-    errorType = type;
-    errorMessage = message;
-  }
-
-  function start() {
-    if (!validUrl) {
-      reset();
+  const handleDownload = () => {
+    if (!isValidUrl) {
       inputInvalid = true;
       return;
     }
-    status = "preparing";
-    progress = 0;
-    errorType = null;
+
+    status = "loading";
     errorMessage = "";
     inputInvalid = false;
-  }
 
-  function cancel() {
-    if (status === "preparing") progress = 100;
-    setError(
-      status === "preparing" ? "user_cancelled_preparing" : "user_cancelled",
-      "Download cancelled."
-    );
-  }
+    // Simulate download preparation (2 seconds)
+    setTimeout(() => {
+      status = "started";
+      // Auto-reset after 3 seconds
+      setTimeout(() => resetState(true), 3000);
+    }, 2000);
+  };
 
-  async function paste() {
+  const handlePaste = async () => {
     try {
       const text = await navigator.clipboard.readText();
       if (text) {
         url = text;
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        if (validUrl) start();
-        else {
-          reset();
-          inputInvalid = true;
+        if (url.trim()) {
+          inputInvalid = false;
+          if (isValidUrl) handleDownload();
         }
       }
     } catch {
-      setError("clipboard_denied", "Clipboard access denied.");
+      status = "error";
+      errorMessage = "Clipboard access denied.";
     }
-  }
+  };
 
-  function handleInput() {
+  const handleInput = () => {
     if (inputInvalid) inputInvalid = false;
-  }
+    if (status === "error") resetState();
+  };
 
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === "Enter") {
-      if (active) cancel();
-      else if (canInteract && validUrl) start();
-    }
-  }
+  const handleKeydown = (e: KeyboardEvent) => {
+    if (e.key === "Enter" && !isProcessing && isValidUrl) handleDownload();
+  };
 </script>
 
 <div
@@ -191,9 +106,9 @@
         <Button
           variant="outline"
           size="icon"
-          onclick={paste}
+          onclick={handlePaste}
           aria-label="Paste from clipboard"
-          disabled={!canInteract}
+          disabled={isProcessing}
         >
           <Clipboard class="h-4 w-4" />
         </Button>
@@ -202,7 +117,7 @@
           oninput={handleInput}
           onkeydown={handleKeydown}
           placeholder="Paste YouTube link here..."
-          disabled={!canInteract}
+          disabled={isProcessing}
           aria-invalid={inputInvalid || undefined}
         />
       </div>
@@ -213,74 +128,35 @@
           <Button
             variant={type === "video" ? "default" : "secondary"}
             onclick={() => (type = "video")}
-            disabled={!canInteract}>Video</Button
+            disabled={isProcessing}
           >
+            Video
+          </Button>
           <Button
             variant={type === "audio" ? "default" : "secondary"}
             onclick={() => (type = "audio")}
-            disabled={!canInteract}>Audio</Button
+            disabled={isProcessing}
           >
+            Audio
+          </Button>
         </ButtonGroup.Root>
       </div>
 
       <!-- Download Button -->
       <div class="flex justify-center">
         <Button
-          onclick={active ? cancel : start}
-          variant={status === "finished"
-            ? "default"
-            : active
-              ? "destructive"
-              : "default"}
-          disabled={status === "finished" || (canInteract && empty)}
+          onclick={handleDownload}
+          disabled={isProcessing || !url.trim()}
           class="w-full sm:w-auto sm:min-w-[200px]"
         >
-          {btnLabel}
+          {#key buttonLabel}
+            <span in:fade={{ duration: 200 }}>{buttonLabel}</span>
+          {/key}
         </Button>
       </div>
     </div>
 
-    <!-- Preview Card: Shown during preparing/downloading/finished/error (except certain errors) -->
-    {#if showPreview}
-      <div class="rounded-lg border bg-card text-card-foreground p-4">
-        {#if status === "preparing"}
-          <!-- Loading State -->
-          <div class="flex gap-4">
-            <Skeleton class="w-24 h-16 sm:w-40 sm:h-24 rounded-md shrink-0" />
-            <div class="flex flex-col justify-between flex-1 min-w-0">
-              <Skeleton class="h-5 sm:h-6 w-3/4 mb-2" />
-              <div class="flex gap-2 flex-wrap">
-                <Skeleton class="h-6 w-20" />
-                <Skeleton class="h-6 w-20" />
-              </div>
-            </div>
-          </div>
-        {:else}
-          <!-- Content Preview -->
-          <div class="flex gap-4">
-            <img
-              src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b6/Image_created_with_a_mobile_phone.png/1280px-Image_created_with_a_mobile_phone.png"
-              alt="Preview thumbnail"
-              class="w-24 h-16 sm:w-40 sm:h-24 object-cover rounded-md shrink-0"
-            />
-            <div class="flex flex-col justify-between flex-1 min-w-0">
-              <h3 class="text-lg sm:text-2xl font-semibold truncate">Title</h3>
-              <div class="flex gap-2 flex-wrap">
-                <Badge variant="secondary">Uploader</Badge>
-                <Badge variant="secondary">Duration</Badge>
-              </div>
-            </div>
-          </div>
-        {/if}
-      </div>
-    {/if}
-
-    <!-- Progress Bar: Shown during preparing/downloading/finished/error (except clipboard_denied) -->
-    {#if showProgress}
-      <Progress value={progress} class={progressClass} />
-    {/if}
-
-    <!-- Error Alert: Shown on error status -->
+    <!-- Error Alert: Rendered when status === "error" -->
     {#if status === "error"}
       <Alert.Root
         variant="destructive"
@@ -294,18 +170,17 @@
           variant="secondary"
           size="sm"
           class="text-foreground"
-          onclick={() => reset()}>OK</Button
+          onclick={() => resetState()}
         >
+          OK
+        </Button>
       </Alert.Root>
     {/if}
   </div>
 </div>
 
-<!-- Bottom Right: Info & Theme Toggle -->
-<div
-  class="fixed bottom-3 right-3 flex gap-2"
-  use:autoAnimate={{ easing: "ease-out" }}
->
+<!-- Bottom Right Controls: Info & Theme Toggle -->
+<div class="fixed bottom-3 right-3 flex gap-2">
   <Popover.Root>
     <Popover.Trigger
       class="inline-flex size-9 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80"
@@ -321,15 +196,19 @@
           href="https://www.gnu.org/licenses/gpl-3.0.en.html"
           target="_blank"
           rel="noopener noreferrer"
-          class="underline hover:text-foreground">GPLv3</a
+          class="underline hover:text-foreground"
         >
+          GPLv3
+        </a>
         and provides no warranty. You can view the source code on
         <a
           href="https://github.com/mdonmez/ytw"
           target="_blank"
           rel="noopener noreferrer"
-          class="underline hover:text-foreground">GitHub</a
-        >. We do not collect any data.
+          class="underline hover:text-foreground"
+        >
+          GitHub
+        </a>. We do not collect any data.
       </p>
     </Popover.Content>
   </Popover.Root>
